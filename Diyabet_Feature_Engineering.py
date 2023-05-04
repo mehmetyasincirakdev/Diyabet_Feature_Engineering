@@ -1,10 +1,12 @@
 import warnings
 
+import pylab as pl
+
+warnings.simplefilter(action="ignore")
+
 import matplotlib.pyplot as plt
 import pandas
 import seaborn
-
-warnings.simplefilter(action="ignore")
 
 pandas.set_option("display.max_columns", None)
 pandas.set_option("display.width", 170)
@@ -76,5 +78,28 @@ def num_summary(dataframee, numerical_col, plot=False):
         plt.title(numerical_col)
         plt.show()
 
+
 for col in num_cols:
-    num_summary(dataframe,col,plot=True)
+    num_summary(dataframe, col, plot=True)
+
+
+def target_summary_with_num(dataframee, target, numerical_col):
+    print(dataframee.groupby(target).agg({numerical_col: "mean"}), end="\n\n\n")
+
+
+for col in num_cols:
+    target_summary_with_num(dataframe, "Outcome", col)
+
+##################################
+# KORELASYON
+##################################
+
+# Korelasyon, olasılık kuramı ve istatistikte iki rassal değişken arasındaki doğrusal ilişkinin yönünü ve gücünü belirtir
+
+dataframe.corr()
+
+# Korelasyon Matrisi
+f, ax = plt.subplots(figsize=[18, 13])
+seaborn.heatmap(dataframe.corr(), annot=True, fmt=".2f", ax=ax, cmap="magma")
+ax.set_title("Correlation Matrix", fontsize=20)
+plt.show(block=True)
