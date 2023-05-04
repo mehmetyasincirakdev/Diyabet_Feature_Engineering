@@ -1,12 +1,14 @@
 import warnings
 
-import pylab as pl
-
 warnings.simplefilter(action="ignore")
 
 import matplotlib.pyplot as plt
 import pandas
 import seaborn
+
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.model_selection import train_test_split
+from sklearn.ensemble import RandomForestClassifier
 
 pandas.set_option("display.max_columns", None)
 pandas.set_option("display.width", 170)
@@ -79,8 +81,8 @@ def num_summary(dataframee, numerical_col, plot=False):
         plt.show()
 
 
-for col in num_cols:
-    num_summary(dataframe, col, plot=True)
+# for col in num_cols:
+#     num_summary(dataframe, col, plot=True)
 
 
 def target_summary_with_num(dataframee, target, numerical_col):
@@ -103,3 +105,35 @@ f, ax = plt.subplots(figsize=[18, 13])
 seaborn.heatmap(dataframe.corr(), annot=True, fmt=".2f", ax=ax, cmap="magma")
 ax.set_title("Correlation Matrix", fontsize=20)
 plt.show(block=True)
+
+# BASE model kurulumu
+#####################
+
+y = dataframe["Outcome"]
+X = dataframe.drop("Outcome", axis=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_prediction = rf_model.predict(X_test)
+
+print(f"Accuracy: {round(accuracy_score(y_prediction, y_test), 2)}")
+print(f"Recall: {round(recall_score(y_prediction, y_test), 3)}")
+print(f"Precision: {round(precision_score(y_prediction, y_test), 2)}")
+print(f"F1: {round(f1_score(y_prediction, y_test), 2)}")
+print(f"Auc: {round(roc_auc_score(y_prediction, y_test), 2)}")
+
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pandas.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    plt.figure(figsize=(10, 10))
+    seaborn.set(font_scale=1)
+    seaborn.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                         ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+
+plot_importance(rf_model, X)
