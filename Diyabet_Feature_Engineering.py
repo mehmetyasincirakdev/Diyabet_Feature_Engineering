@@ -5,6 +5,7 @@ warnings.simplefilter(action="ignore")
 import matplotlib.pyplot as plt
 import pandas
 import seaborn
+import numpy
 
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from sklearn.model_selection import train_test_split
@@ -131,9 +132,100 @@ def plot_importance(model, features, num=len(X), save=False):
                                                                          ascending=False)[0:num])
     plt.title('Features')
     plt.tight_layout()
-    plt.show()
+    plt.show(block=True)
     if save:
         plt.savefig('importances.png')
 
 
 plot_importance(rf_model, X)
+
+##################################
+# GÖREV 2: FEATURE ENGINEERING
+##################################
+
+##################################
+# EKSİK DEĞER ANALİZİ
+##################################
+
+# Bir insanda Pregnancies ve Outcome dışındaki değişken değerleri 0 olamayacağı bilinmektedir.
+# Bundan dolayı bu değerlerle ilgili aksiyon kararı alınmalıdır. 0 olan değerlere NaN atanabilir .
+zero_columns = [col for col in dataframe.columns if (dataframe[col].min() == 0 and col not in ["Pregnancies", "Outcome"])]
+
+zero_columns
+
+# Gözlem birimlerinde 0 olan degiskenlerin her birisine gidip 0 iceren gozlem degerlerini NaN ile değiştirdik.
+for col in zero_columns:
+    dataframe[col] = numpy.where(dataframe[col] == 0, numpy.nan, dataframe[col])
+
+# Eksik Gözlem Analizi
+dataframe.isnull().sum()
+
+
+def missing_values_table(dataframe, na_name=False):
+    na_columns = [col for col in dataframe.columns if dataframe[col].isnull().sum() > 0]
+    n_miss = dataframe[na_columns].isnull().sum().sort_values(ascending=False)
+    ratio = (dataframe[na_columns].isnull().sum() / dataframe.shape[0] * 100).sort_values(ascending=False)
+    missing_dataframe = pandas.concat([n_miss, numpy.round(ratio, 2)], axis=1, keys=['n_miss', 'ratio'])
+    print(missing_dataframe, end="\n")
+    if na_name:
+        return na_columns
+
+
+na_columns = missing_values_table(dataframe, na_name=True)
+
+
+# Eksik Değerlerin Bağımlı Değişken ile İlişkisinin İncelenmesi
+def missing_vs_target(dataframe, target, na_columns):
+    temp_dataframe = dataframe.copy()
+    for col in na_columns:
+        temp_dataframe[col + '_NA_FLAG'] = numpy.where(temp_dataframe[col].isnull(), 1, 0)
+    na_flags = temp_dataframe.loc[:, temp_dataframe.columns.str.contains("_NA_")].columns
+    for col in na_flags:
+        print(pandas.DataFrame({"TARGET_MEAN": temp_dataframe.groupby(col)[target].mean(),
+                                "Count": temp_dataframe.groupby(col)[target].count()}), end="\n\n\n")
+
+
+missing_vs_target(dataframe, "Outcome", na_columns)
+
+# Eksik Değerlerin Doldurulması
+for col in zero_columns:
+    dataframe.loc[dataframe[col].isnull(), col] = dataframe[col].median()
+
+dataframe.isnull().sum()
+
+
+##################################
+# AYKIRI DEĞER ANALİZİ
+##################################
+
+def outlier_thresholds(dataframee, col_name, q1=0.05, q3=0.95):
+    quartile1 = dataframe[col_name].quantile(q1)
+    quartile3 = dataframe[col_name].quantile(q3)
+    interquantile_range = quartile3 - quartile1
+    up_limit = quartile3 + 1.5 * interquantile_range
+    low_limit = quartile1 - 1.5 * interquantile_range
+    return low_limit, up_limit
+
+
+def check_outlier(dataframee, col_name):
+    low_limit, up_limit = outlier_thresholds(dataframe, col_name)
+    if dataframe[(dataframe[col_name] > up_limit) | (dataframe[col_name] < low_limit)].any(axis=None):
+        return True
+    else:
+        return False
+
+
+def replace_with_thresholds(dataframee, variable, q1=0.05, q3=0.95):
+    low_limit, up_limit = outlier_thresholds(dataframe, variable, q1=0.05, q3=0.95)
+    dataframe.loc[(dataframe[variable] < low_limit), variable] = low_limit
+    dataframe.loc[(dataframe[variable] > up_limit), variable] = up_limit
+
+
+# Aykırı Değer Analizi ve Baskılama İşlemi
+for col in dataframe.columns:
+    print(col, check_outlier(dataframe, col))
+    if check_outlier(dataframe, col):
+        replace_with_thresholds(dataframe, col)
+
+for col in dataframe.columns:
+    print(col, check_outlier(dataframe, col))
