@@ -1,5 +1,7 @@
 import warnings
 
+from sklearn.preprocessing import StandardScaler
+
 warnings.simplefilter(action="ignore")
 
 import matplotlib.pyplot as plt
@@ -7,9 +9,12 @@ import pandas
 import seaborn
 import numpy
 
-from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score,roc_auc_score
+from sklearn.model_selection import GridSearchCV, cross_validate
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.preprocessing import StandardScaler
 
 pandas.set_option("display.max_columns", None)
 pandas.set_option("display.width", 170)
@@ -235,5 +240,152 @@ for col in dataframe.columns:
 ##################################
 
 # Yaş değişkenini kategorilere ayırıp yeni yaş değişkeni oluşturulması
-df.loc[(df["Age"] >= 21) & (df["Age"] < 50), "NEW_AGE_CAT"] = "mature"
-df.loc[(df["Age"] >= 50), "NEW_AGE_CAT"] = "senior"
+dataframe.loc[(dataframe["Age"] >= 21) & (dataframe["Age"] < 50), "NEW_AGE_CAT"] = "mature"
+dataframe.loc[(dataframe["Age"] >= 50), "NEW_AGE_CAT"] = "senior"
+
+# BMI 18,5 aşağısı underweight, 18.5 ile 24.9 arası normal, 24.9 ile 29.9 arası Overweight ve 30 üstü obez
+dataframe['NEW_BMI'] = pandas.cut(x=dataframe['BMI'], bins=[0, 18.5, 24.9, 29.9, 100],labels=["Underweight", "Healthy", "Overweight", "Obese"])
+
+# Glukoz degerini kategorik değişkene çevirme
+dataframe["NEW_GLUCOSE"] = pandas.cut(x=dataframe["Glucose"], bins=[0, 140, 200, 300], labels=["Normal", "Prediabetes", "Diabetes"])
+
+# # Yaş ve beden kitle indeksini bir arada düşünerek kategorik değişken oluşturma 3 kırılım yakalandı
+dataframe.loc[(dataframe["BMI"] < 18.5) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "underweightmature"
+dataframe.loc[(dataframe["BMI"] < 18.5) & (dataframe["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "underweightsenior"
+dataframe.loc[((dataframe["BMI"] >= 18.5) & (dataframe["BMI"] < 25)) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "healthymature"
+dataframe.loc[((dataframe["BMI"] >= 18.5) & (dataframe["BMI"] < 25)) & (dataframe["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "healthysenior"
+dataframe.loc[((dataframe["BMI"] >= 25) & (dataframe["BMI"] < 30)) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "overweightmature"
+dataframe.loc[((dataframe["BMI"] >= 25) & (dataframe["BMI"] < 30)) & (dataframe["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "overweightsenior"
+dataframe.loc[(dataframe["BMI"] > 18.5) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_BMI_NOM"] = "obesemature"
+dataframe.loc[(dataframe["BMI"] > 18.5) & (dataframe["Age"] >= 50), "NEW_AGE_BMI_NOM"] = "obesesenior"
+
+# Yaş ve Glikoz değerlerini bir arada düşünerek kategorik değişken oluşturma
+dataframe.loc[(dataframe["Glucose"] < 70) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "lowmature"
+dataframe.loc[(dataframe["Glucose"] < 70) & (dataframe["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "lowsenior"
+dataframe.loc[((dataframe["Glucose"] >= 70) & (dataframe["Glucose"] < 100)) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "normalmature"
+dataframe.loc[((dataframe["Glucose"] >= 70) & (dataframe["Glucose"] < 100)) & (dataframe["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "normalsenior"
+dataframe.loc[((dataframe["Glucose"] >= 100) & (dataframe["Glucose"] <= 125)) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "hiddenmature"
+dataframe.loc[((dataframe["Glucose"] >= 100) & (dataframe["Glucose"] <= 125)) & (dataframe["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "hiddensenior"
+dataframe.loc[(dataframe["Glucose"] > 125) & ((dataframe["Age"] >= 21) & (dataframe["Age"] < 50)), "NEW_AGE_GLUCOSE_NOM"] = "highmature"
+dataframe.loc[(dataframe["Glucose"] > 125) & (dataframe["Age"] >= 50), "NEW_AGE_GLUCOSE_NOM"] = "highsenior"
+
+
+# İnsulin Değeri ile Kategorik değişken türetmek
+def set_insulin(dataframee, col_name="Insulin"):
+    if 16 <= dataframee[col_name] <= 166:
+        return "Normal"
+    else:
+        return "Abnormal"
+
+dataframe["NEW_INSULIN_SCORE"] = dataframe.apply(set_insulin, axis=1)
+
+dataframe["NEW_GLUCOSE*INSULIN"] = dataframe["Glucose"] * dataframe["Insulin"]
+
+# sıfır olan değerler dikkat!!!!
+dataframe["NEW_GLUCOSE*PREGNANCIES"] = dataframe["Glucose"] * dataframe["Pregnancies"]
+#dataframe["NEW_GLUCOSE*PREGNANCIES"] = dataframe["Glucose"] * (1+ dataframe["Pregnancies"])
+
+
+# Kolonların büyültülmesi
+dataframe.columns = [col.upper() for col in dataframe.columns]
+
+dataframe.head()
+
+##################################
+# ENCODING
+##################################
+
+# Değişkenlerin tiplerine göre ayrılması işlemi
+cat_cols, num_cols, cat_but_car = grab_col_names(dataframe)
+
+# LABEL ENCODING
+def label_encoder(dataframee, binary_col):
+    labelencoder = LabelEncoder()
+    dataframe[binary_col] = labelencoder.fit_transform(dataframe[binary_col])
+    return dataframe
+
+binary_cols = [col for col in dataframe.columns if dataframe[col].dtypes == "O" and dataframe[col].nunique() == 2]
+binary_cols
+
+for col in binary_cols:
+    dataframe = label_encoder(dataframe, col)
+
+# One-Hot Encoding İşlemi
+# cat_cols listesinin güncelleme işlemi
+cat_cols = [col for col in cat_cols if col not in binary_cols and col not in ["OUTCOME"]]
+cat_cols
+
+def one_hot_encoder(dataframee, categorical_cols, drop_first=False):
+    dataframe = pandas.get_dummies(dataframee, columns=categorical_cols, drop_first=drop_first)
+    return dataframe
+
+dataframe = one_hot_encoder(dataframe, cat_cols, drop_first=True)
+
+dataframe.head()
+
+##################################
+# STANDARTLAŞTIRMA
+##################################
+
+num_cols
+
+scaler = StandardScaler()
+dataframe[num_cols] = scaler.fit_transform(dataframe[num_cols])
+
+dataframe.head()
+dataframe.shape
+
+
+
+##################################
+# MODELLEME
+##################################
+
+y = dataframe["OUTCOME"]
+X = dataframe.drop("OUTCOME", axis=1)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=17)
+
+rf_model = RandomForestClassifier(random_state=46).fit(X_train, y_train)
+y_pred = rf_model.predict(X_test)
+
+print(f"Accuracy: {round(accuracy_score(y_pred, y_test), 2)}")
+print(f"Recall: {round(recall_score(y_pred,y_test),3)}")
+print(f"Precision: {round(precision_score(y_pred,y_test), 2)}")
+print(f"F1: {round(f1_score(y_pred,y_test), 2)}")
+print(f"Auc: {round(roc_auc_score(y_pred,y_test), 2)}")
+
+# Accuracy: 0.79
+# Recall: 0.711
+# Precision: 0.67
+# F1: 0.69
+# Auc: 0.77
+
+# Base Model
+# Accuracy: 0.77
+# Recall: 0.706
+# Precision: 0.59
+# F1: 0.64
+# Auc: 0.75
+
+
+
+##################################
+# FEATURE IMPORTANCE
+##################################
+
+def plot_importance(model, features, num=len(X), save=False):
+    feature_imp = pandas.DataFrame({'Value': model.feature_importances_, 'Feature': features.columns})
+    print(feature_imp.sort_values("Value",ascending=False))
+    plt.figure(figsize=(10, 10))
+    seaborn.set(font_scale=1)
+    seaborn.barplot(x="Value", y="Feature", data=feature_imp.sort_values(by="Value",
+                                                                     ascending=False)[0:num])
+    plt.title('Features')
+    plt.tight_layout()
+    plt.show()
+    if save:
+        plt.savefig('importances.png')
+
+plot_importance(rf_model, X)
+print(dataframe)
+print(y_prediction)
