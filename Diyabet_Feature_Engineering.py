@@ -229,3 +229,11 @@ for col in dataframe.columns:
 
 for col in dataframe.columns:
     print(col, check_outlier(dataframe, col))
+
+##################################
+# ÖZELLİK ÇIKARIMI
+##################################
+
+# Yaş değişkenini kategorilere ayırıp yeni yaş değişkeni oluşturulması
+df.loc[(df["Age"] >= 21) & (df["Age"] < 50), "NEW_AGE_CAT"] = "mature"
+df.loc[(df["Age"] >= 50), "NEW_AGE_CAT"] = "senior"
